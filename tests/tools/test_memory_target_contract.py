@@ -14,6 +14,13 @@ from tools.skill_provenance import reset_current_write_origin, set_current_write
 from tools import write_approval as wa
 
 
+@pytest.fixture(autouse=True)
+def _gate_off(monkeypatch):
+    """These tests exercise the write mechanics themselves; the approval gate has its own
+    suite (tests/tools/test_write_approval.py), so writes here go straight through."""
+    monkeypatch.setattr(wa, "write_approval_enabled", lambda subsystem: False)
+
+
 def _call(route, store, args):
     if route == "store":
         return store.apply_batch(args.get("target"), args["operations"])

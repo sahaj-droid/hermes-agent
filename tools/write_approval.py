@@ -6,7 +6,7 @@ A per-subsystem boolean ``write_approval`` gates the agent's cross-session write
 origin (**foreground** turn or **background_review** fork). The gate is enforced
 by the subsystem tools that own these writes (``memory``, ``skill_manage``);
 the generic file tools (``write_file``/``patch``) do not consult it (#60440
-tracks closing that gap). ``false`` (default) writes freely; ``true`` never
+tracks closing that gap). ``true`` (default) never
 commits directly: it prompts inline (memory, interactive CLI only) or **stages**
 the write under
 ``<HERMES_HOME>/pending/{memory,skills}/<id>.json`` for out-of-band review.
@@ -40,27 +40,39 @@ _SUBSYSTEMS = (MEMORY, SKILLS)
 # state — to disable a subsystem use its own enable flag (e.g. ``memory.memory_enabled``).
 CONFIG_KEY = "write_approval"
 _TRUTHY_STRINGS = frozenset({"on", "true", "yes", "1", "approve", "enabled"})
+_FALSY_STRINGS = frozenset({"off", "false", "no", "0", "deny", "disabled"})
 
 
 # --- Config resolution ---
 
 def write_approval_enabled(subsystem: str) -> bool:
-    """Read ``<subsystem>.write_approval``; any unset/invalid value means gate off."""
+    """Read ``<subsystem>.write_approval``; the gate is ON unless the value is explicitly falsy.
+
+    This is a security boundary, so it fails CLOSED: a missing key, an unrecognised value or a
+    config read error leaves the gate on instead of letting the agent write freely.
+    """
     if subsystem not in _SUBSYSTEMS:
         return False
     try:
         from hermes_cli.config import load_config, cfg_get
-        return _normalize_enabled(cfg_get(load_config(), subsystem, CONFIG_KEY, default=False))
+        return _normalize_enabled(cfg_get(load_config(), subsystem, CONFIG_KEY, default=True))
     except Exception:
-        return False
+        logger.warning("write_approval: config read failed; keeping the %s gate ON", subsystem)
+        return True
 
 
 def _normalize_enabled(value: Any) -> bool:
-    """Coerce a config value to bool; unknown → False (gate off). The string branch
+    """Coerce a config value to bool; unknown → True (gate on, fail closed). The string branch
     covers hand-edited configs (YAML already parses bare on/off/yes/no)."""
     if isinstance(value, bool):
         return value
-    return isinstance(value, str) and value.strip().lower() in _TRUTHY_STRINGS
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in _TRUTHY_STRINGS:
+            return True
+        if normalized in _FALSY_STRINGS:
+            return False
+    return True
 
 
 # --- Pending store (file-backed) ---

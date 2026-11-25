@@ -12,7 +12,18 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+@pytest.fixture(autouse=True)
+def _gate_off(monkeypatch):
+    """These tests exercise the batch mechanics themselves; the approval gate has its own
+    suite (tests/tools/test_write_approval.py), so writes here go straight through."""
+    from tools import write_approval as _wa
+
+    monkeypatch.setattr(_wa, "write_approval_enabled", lambda subsystem: False)
 
 SK = (
     "---\nname: {n}\ndescription: Use when probing batch ops. Behavior.\n---\n"

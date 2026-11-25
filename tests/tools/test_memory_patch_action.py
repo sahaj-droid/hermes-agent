@@ -15,6 +15,15 @@ from hermes_cli.write_approval_commands import _changed_entries
 PACKED = "todo: item A; item B; item C"
 
 
+@pytest.fixture(autouse=True)
+def _gate_off(monkeypatch):
+    """These tests exercise the patch action itself; the approval gate has its own
+    suite (tests/tools/test_write_approval.py), so writes here go straight through."""
+    from tools import write_approval as _wa
+
+    monkeypatch.setattr(_wa, "write_approval_enabled", lambda subsystem: False)
+
+
 @pytest.fixture
 def packed_store(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
