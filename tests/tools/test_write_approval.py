@@ -1,8 +1,8 @@
 """Tests for the memory/skill write-approval gate (tools/write_approval.py)
 and the shared slash-command handlers (hermes_cli/write_approval_commands.py).
 
-Covers the boolean write_approval gate (off by default = write freely; on =
-require approval) for both subsystems, the foreground-vs-background staging
+Covers the boolean write_approval gate (on by default = require approval; off =
+write freely) for both subsystems, the foreground-vs-background staging
 split, pending store CRUD, and the list/approve/reject/diff/approval
 subcommand dispatch.
 """
@@ -53,19 +53,23 @@ def test_normalize_enabled_coerces_values():
     assert wa._normalize_enabled("on") is True
     assert wa._normalize_enabled("approve") is True
     assert wa._normalize_enabled("true") is True
-    # Everything else → False (gate off is the safe default).
+    # Explicit falsy strings → False.
     assert wa._normalize_enabled("off") is False
-    assert wa._normalize_enabled("garbage") is False
-    assert wa._normalize_enabled(None) is False
+    assert wa._normalize_enabled("false") is False
+    # Anything unrecognised → True: this is a security boundary, so it fails closed.
+    assert wa._normalize_enabled("garbage") is True
+    assert wa._normalize_enabled(None) is True
 
 # ---------------------------------------------------------------------------
 # Memory gate
 # ---------------------------------------------------------------------------
 
 def test_memory_gate_off_allows_write(hermes_home):
-    # Default (gate off) → write straight through, no staging.
+    # Explicitly opted out (write_approval: false) → write straight through, no staging.
     from tools.memory_tool import memory_tool, MemoryStore
     from tools import write_approval as wa
+
+    _set_approval("memory", False)
     store = MemoryStore(); store.load_from_disk()
     r = json.loads(memory_tool("add", "user", "save me", store=store))
     assert r["success"] is True
@@ -223,6 +227,8 @@ def test_approve_refuses_staged_remove_whose_entry_changed(hermes_home, shape):
     from tools import write_approval as wa
     store, pid = _review_stages_remove(shape)
     newer = "Staging DB: pg-staging-3 (migrated 2026-09-20, creds in vault 'stg')"
+    # The live agent's in-place write has to land directly for this scenario: gate off.
+    _set_approval("memory", False)
     assert json.loads(memory_tool(action="patch", old_text=_REVIEWED, content=newer, store=store))["success"]
 
     out = handle_pending_subcommand(wa.MEMORY, ["approve", pid], memory_store=load_on_disk_store())

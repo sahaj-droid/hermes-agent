@@ -14,6 +14,15 @@ from tools.memory_tool import (
 from tools.skill_provenance import reset_current_write_origin, set_current_write_origin
 
 
+@pytest.fixture(autouse=True)
+def _gate_off(monkeypatch):
+    """These tests exercise the write mechanics themselves; the approval gate has its own
+    suite (tests/tools/test_write_approval.py), so writes here go straight through."""
+    from tools import write_approval as _wa
+
+    monkeypatch.setattr(_wa, "write_approval_enabled", lambda subsystem: False)
+
+
 def _blocked(content, pattern_id=None):
     """Assert content is refused by the scanner, optionally by a named pattern."""
     result = _scan_memory_content(content)
